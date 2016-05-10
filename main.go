@@ -5,17 +5,21 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mrsln/geocoder"
 )
 
 func main() {
-	wundergroundAPIKey := flag.String("wunderground.api.key", "0123456789abcdef", "wunderground.com API key")
+	//wundergroundAPIKey := flag.String("wunderground.api.key", "fea099f5e733c6ab", "wunderground.com API key")
 	flag.Parse()
 
 	mw := multiWeatherProvider{
 		openWeatherMap{},
-		weatherUnderground{apiKey: *wundergroundAPIKey},
+		// weatherUnderground{apiKey: *wundergroundAPIKey},
+		forecastIo{},
 	}
 
 	http.HandleFunc("/weather/", func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +87,7 @@ func (w multiWeatherProvider) temperature(city string) (float64, error) {
 type openWeatherMap struct{}
 
 func (w openWeatherMap) temperature(city string) (float64, error) {
-	resp, err := http.Get("http://api.openweathermap.org/data/2.5/weather?q=" + city)
+	resp, err := http.Get("http://api.openweathermap.org/data/2.5/weather?APPID=8339dc7784ffd8be92fd8874e8da083f&q=" + city)
 	if err != nil {
 		return 0, err
 	}
@@ -100,7 +104,8 @@ func (w openWeatherMap) temperature(city string) (float64, error) {
 		return 0, err
 	}
 
-	log.Printf("openWeatherMap: %s: %.2f", city, d.Main.Kelvin)
+	celsius := d.Main.Kelvin - 273.15
+	log.Printf("openWeatherMap: %s: %.2fK - %.2f°C", city, d.Main.Kelvin, celsius)
 	return d.Main.Kelvin, nil
 }
 
@@ -127,6 +132,44 @@ func (w weatherUnderground) temperature(city string) (float64, error) {
 	}
 
 	kelvin := d.Observation.Celsius + 273.15
-	log.Printf("weatherUnderground: %s: %.2f", city, kelvin)
+	log.Printf("weatherUnderground: %s: %.2fK - %.2f°C", city, kelvin, d.Observation.Celsius)
+	return kelvin, nil
+}
+
+type forecastIo struct{}
+
+func (w forecastIo) temperature(city string) (float64, error) {
+
+	// TODO get coordinates
+	coords, err := geocoder.AddressToCoordinates(city + ",France")
+	if err != nil {
+		return 0, err
+	}
+	//coordinate, _ := google.Geocode(address)
+	//fmt.Printf("Lat: %f, Lng: %f", coordinate.Lat, coordinate.Lng) // Lat: 48.856614, Lng: 2.352222
+
+	lat := strconv.FormatFloat(float64(coords.Latitude), 'f', -1, 32)
+	long := strconv.FormatFloat(float64(coords.Longitude), 'f', -1, 32)
+	log.Printf(city+" coordinates : %s Latitude, %s Longitude", lat, long)
+
+	resp, err := http.Get("https://api.forecast.io/forecast/432d4bab34f6496d0cb95df3d022ce12/" + lat + "," + long + "?units=si")
+	if err != nil {
+		return 0, err
+	}
+
+	defer resp.Body.Close()
+
+	var d struct {
+		Observation struct {
+			Celsius float64 `json:"temperature"`
+		} `json:"currently"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+		return 0, err
+	}
+
+	kelvin := d.Observation.Celsius + 273.15
+	log.Printf("forecast.io: %s: %.2fK - %.2f°C", city, kelvin, d.Observation.Celsius)
 	return kelvin, nil
 }
