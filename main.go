@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mrsln/geocoder"
+	"github.com/jasonmoo/geo"
 )
 
 func main() {
@@ -141,15 +141,13 @@ type forecastIo struct{}
 func (w forecastIo) temperature(city string) (float64, error) {
 
 	// TODO get coordinates
-	coords, err := geocoder.AddressToCoordinates(city + ",France")
+	coords, err := geo.Geocode(city + ", france")
 	if err != nil {
 		return 0, err
 	}
-	//coordinate, _ := google.Geocode(address)
-	//fmt.Printf("Lat: %f, Lng: %f", coordinate.Lat, coordinate.Lng) // Lat: 48.856614, Lng: 2.352222
 
-	lat := strconv.FormatFloat(float64(coords.Latitude), 'f', -1, 32)
-	long := strconv.FormatFloat(float64(coords.Longitude), 'f', -1, 32)
+	lat := strconv.FormatFloat(float64(coords.Lat), 'f', -1, 32)
+	long := strconv.FormatFloat(float64(coords.Lng), 'f', -1, 32)
 	log.Printf(city+" coordinates : %s Latitude, %s Longitude", lat, long)
 
 	resp, err := http.Get("https://api.forecast.io/forecast/432d4bab34f6496d0cb95df3d022ce12/" + lat + "," + long + "?units=si")
